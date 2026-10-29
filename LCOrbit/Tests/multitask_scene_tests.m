@@ -51,6 +51,16 @@ static UIEdgeInsets UIEdgeInsetsMake(CGFloat top,CGFloat left,CGFloat bottom,CGF
 @property UIEdgeInsets peripheryInsets,safeAreaInsetsPortrait,safeAreaEdgeInsets;
 @end
 @implementation OrbitSettings @end
+// 被测的 updateSceneSettings 块引用了 UIApp 与 UIApplicationStateActive，
+// 这两个都是 UIKit 符号，本测试只编基础框架，因此在这里提供最小桩实现。
+typedef NSInteger UIApplicationState;
+enum { UIApplicationStateActive = 0, UIApplicationStateInactive = 1, UIApplicationStateBackground = 2 };
+@interface OrbitApplication : NSObject
+@property UIApplicationState applicationState;
+@end
+@implementation OrbitApplication @end
+@compatibility_alias UIApplication OrbitApplication;
+static OrbitApplication *UIApp = nil;
 @compatibility_alias UIMutableApplicationSceneSettings OrbitSettings;
 @compatibility_alias UIMutableApplicationSceneClientSettings OrbitSettings;
 @interface OrbitCornerRadius : NSObject
