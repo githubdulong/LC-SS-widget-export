@@ -596,9 +596,9 @@ class AppInfoProvider {
         }
 
         for window in windowScene.windows {
-            if let targetView = findMultitaskView(in: window, withUUID: uuid) {
-                passURLSchemeToView(targetView)
-                animateViewAppearance(targetView, from: center, in: window)
+            if findMultitaskView(in: window, withUUID: uuid) != nil {
+                passURLSchemeToView(uuid: uuid)
+                animateViewAppearance(uuid: uuid, from: center, in: window)
                 // 切换到的 App 视为最近使用，刷新时间戳后重新排序 Dock。
                 markAppActive(uuid: uuid)
                 return true
@@ -631,16 +631,23 @@ class AppInfoProvider {
         }
     }
 
-    private func passURLSchemeToView(_ view: UIView) {
+    /// 通过 UUID 取到窗口视图，避免拿旧 view 引用做动画
+    private func view(forUUID uuid: String) -> UIView? {
+        apps.first { $0.appUUID == uuid }?.view
+    }
+    
+    private func passURLSchemeToView(uuid: String) {
         if let launchUrl = UserDefaults.standard.string(forKey: "launchAppUrlScheme") {
             UserDefaults.standard.removeObject(forKey: "launchAppUrlScheme")
-            if let decoratedVC = view._viewDelegate() as? DecoratedAppSceneViewController {
+            if let view = view(forUUID: uuid),
+               let decoratedVC = view._viewDelegate() as? DecoratedAppSceneViewController {
                 decoratedVC.appSceneVC.openURLScheme(launchUrl)
             }
         }
     }
 
-    private func animateViewAppearance(_ view: UIView, from center: CGPoint?, in window: UIWindow) {
+    private func animateViewAppearance(uuid: String, from center: CGPoint?, in window: UIWindow) {
+        guard let view = view(forUUID: uuid) else { return }
         let isHidden = view.isHidden || view.alpha < 0.1
         let decoratedVC = view._viewDelegate() as? DecoratedAppSceneViewController
         let isMaximized = decoratedVC?.isMaximized ?? false
@@ -652,7 +659,10 @@ class AppInfoProvider {
         
         if isHidden {
             view.layer.removeAllAnimations()
-            view.isHidden = true
+            // 不用 isHidden=true 做动画起点：隐藏状态下视图被摘出渲染树，
+            // 会打断客居 App 的音频会话，导致后台播放中断。零 alpha 已经不可见。
+            view.alpha = 0
+            view.isHidden = false
             view.transform = .identity
             let origFrame = view.frame
             let pipManager = PiPManager.shared!
@@ -660,7 +670,6 @@ class AppInfoProvider {
                 pipManager.stopPiP()
             } else {
                 view.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
-                view.isHidden = false
                 let smaller = min(view.frame.size.width, view.frame.size.height)
                 view.frame.size = CGSize(width: smaller, height: smaller)
                 if let center { view.center = center }

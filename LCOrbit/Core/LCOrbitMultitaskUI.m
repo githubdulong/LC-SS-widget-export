@@ -351,8 +351,12 @@ static void RestoreAppearance(UIViewController *window) {
 static void SetVisible(UIViewController *window,SEL selector,BOOL visible) {
     [window.view.layer removeAllAnimations];
     window.view.transform=CGAffineTransformIdentity;
+    // 不能用 hidden=YES 隐藏：hidden 会让 UIView 从渲染树里摘下来，客居 App 的
+    // CALayer 不再参与显示事务，AVAudioSession/AudioQueue 会被系统断流，
+    // 表现就是开了多任务就没办法后台播放音乐/视频。
+    // 改成 alpha 隐藏：视图仍在树上，后台音频与播放会话不受影响。
     window.view.alpha=visible?1:0;
-    window.view.hidden=!visible;
+    window.view.hidden=NO;
 }
 static void Activate(UIViewController *window,SEL selector) {
     if(![LCOrbitMultitask isEnabled]) return;
