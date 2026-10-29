@@ -78,10 +78,11 @@ static UIViewController *InitialSceneWindow;
 static void InstallFinalSceneHook(void);
 typedef id (*OrbitInitializer)(id __attribute__((ns_consumed)),SEL,id,id,id,id) __attribute__((ns_returns_retained));
 
-static UIBackgroundTaskIdentifier HostBgTaskId = UIBackgroundTaskInvalid;
+static UIBackgroundTaskIdentifier HostBgTaskId;
 static void HostAudioKeepAliveInit(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        HostBgTaskId = UIBackgroundTaskInvalid;
         Class audioSessionClass = NSClassFromString(@"AVAudioSession");
         if(audioSessionClass) {
             SEL sharedSel = NSSelectorFromString(@"sharedInstance");
