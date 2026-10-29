@@ -15,6 +15,11 @@
 @property(nonatomic) CGRect originalFrame;
 @property(nonatomic) UIBarButtonItem *maximizeButton;
 @property(nonatomic) bool isAppTerminationRequested;
+// 宿主 App 是否处于活跃状态。多任务窗口里的 guest 场景原先被无条件置为前台，
+// 导致 guest 进程始终认为自己在前台，系统不会给它保留后台音频权限，
+// 表现就是开了多任务之后音乐/视频一退到后台就被断流。
+// 这里改为跟随宿主的真实激活状态，在宿主进入后台时把 guest 场景也降为非前台。
+@property(nonatomic) BOOL hostActive;
 @end
 
 @implementation DecoratedAppSceneViewController
@@ -26,6 +31,10 @@
     
     _dataUUID = dataUUID;
     _scaleRatio = 1.0;
+    // 初始值必须取宿主真实状态，不能默认 NO，否则新建窗口一上来就被标成后台。
+    _hostActive = UIApp.applicationState == UIApplicationStateActive;
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hostDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hostDidEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     _isMaximized = [NSUserDefaults.lcUserDefaults boolForKey:@"LCLaunchMultitaskMaximized"];
     _appSceneVC = [[AppSceneViewController alloc] initWithBundleId:bundleId dataUUID:dataUUID delegate:self];
     self.title = windowName;
@@ -92,6 +101,29 @@
     });
 
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+// 宿主激活状态变化时，把新的 foreground 同步到 guest 场景。
+// 只做状态同步，不改窗口显隐，也不涉及音频会话配置。
+- (void)applyHostActiveToScene {
+    if(!self.appSceneVC) return;
+    [self.appSceneVC updateSettingsWithBlock:^(UIMutableApplicationSceneSettings *settings) {
+        settings.foreground = self.hostActive;
+    }];
+}
+
+- (void)hostDidBecomeActive:(NSNotification *)note {
+    self.hostActive = YES;
+    [self applyHostActiveToScene];
+}
+
+- (void)hostDidEnterBackground:(NSNotification *)note {
+    self.hostActive = NO;
+    [self applyHostActiveToScene];
 }
 
 - (void)setupDecoratedView {
@@ -382,7 +414,9 @@
         settings.userInterfaceStyle = baseSettings.userInterfaceStyle;
         settings.interfaceOrientation = baseSettings.interfaceOrientation;
         settings.deviceOrientation = baseSettings.deviceOrientation;
-        settings.foreground = YES;
+        // 跟随宿主激活状态，不再无条件 YES。PiP 模式下 shouldIgnoreSceneUpdates 会拦住全部更新，
+        // 那里的后台播放由 PiPManager 单独负责，不受这里影响。
+        settings.foreground = self.hostActive;
         
         if(self.isMaximized) {
             [self updateMaximizedFrameWithSettings:settings];

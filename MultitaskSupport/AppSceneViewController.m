@@ -130,7 +130,10 @@
         settings.canShowAlerts = YES;
         settings.cornerRadiusConfiguration = [[PrivClass(BSCornerRadiusConfiguration) alloc] initWithTopLeft:self.view.layer.cornerRadius bottomLeft:self.view.layer.cornerRadius bottomRight:self.view.layer.cornerRadius topRight:self.view.layer.cornerRadius];
         settings.displayConfiguration = UIScreen.mainScreen.displayConfiguration;
-        settings.foreground = YES;
+        // 初始前台状态取宿主真实状态。无条件 YES 会让 guest 一开始就认为自己在前后台，
+        // 宿主退到后台时系统就不会给 guest 保留后台音频权限。后续状态变化由
+        // DecoratedAppSceneViewController 监听激活/退后台通知同步。
+        settings.foreground = UIApp.applicationState == UIApplicationStateActive;
         //settings.interruptionPolicy = 2; // reconnect
         settings.level = 1;
         settings.persistenceIdentifier = self.dataUUID;

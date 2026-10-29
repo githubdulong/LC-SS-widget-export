@@ -147,8 +147,23 @@ class LCAppModel: ObservableObject, Hashable {
     public var shouldLaunchInMultitaskMode : Bool {
         get {
             if #available(iOS 16.0, *) {
-                return uiIsMultitaskModeSpecificed == .yes ||
-                (uiIsMultitaskModeSpecificed == .default && UserDefaults.standard.bool(forKey: "LCLaunchInMultitaskMode"))
+                // 逐 App 显式开启优先。
+                if uiIsMultitaskModeSpecificed == .yes {
+                    return true
+                }
+                // 逐 App 显式关闭必须尊重，不能因为后面改了默认值就把用户的关闭操作架空。
+                if uiIsMultitaskModeSpecificed == .no {
+                    return false
+                }
+                // 其余情况取决于全局开关。用户从未设置过该开关时，默认按多任务启动，
+                // 否则直接点 LC 主界面图标走的还是老的单实例路径，不会进多任务，
+                // 而侧边悬浮菜单走 LCOrbitMultitask.launchGuest，无条件进多任务，
+                // 两条入口行为不一致。这里把未设置视为开启，让两条入口对齐。
+                let defaults = UserDefaults.standard
+                if defaults.object(forKey: "LCLaunchInMultitaskMode") == nil {
+                    return true
+                }
+                return defaults.bool(forKey: "LCLaunchInMultitaskMode")
             } else {
                 return false
             }
