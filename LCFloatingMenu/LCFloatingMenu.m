@@ -643,7 +643,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [self.orbFadeTimer invalidate];
     if(self.isOpen || !self.orb) return;
     __weak typeof(self) weakSelf=self;
-    self.orbFadeTimer=[NSTimer scheduledTimerWithTimeInterval:3.0 repeats:NO block:^(NSTimer * _Nonnull timer) {
+    self.orbFadeTimer=[NSTimer scheduledTimerWithTimeInterval:5.0 repeats:NO block:^(NSTimer * _Nonnull timer) {
         [weakSelf fadeOrb];
     }];
 }
@@ -892,23 +892,26 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     }
     BOOL current=[LCOrbitGuestService isCurrentGuest:app];
     BOOL blocked=![app[@"launchable"] boolValue] && ![app[@"builtin"] boolValue];
-    if(current || blocked) {
-        CGFloat side=MAX(15,MIN(20,size*.38));
-        UIView *badge=[[UIView alloc] initWithFrame:CGRectMake(size-side-1.5,size-side-1.5,side,side)];
-        badge.backgroundColor=current?[UIColor systemGreenColor]:[UIColor systemOrangeColor];
-        badge.layer.cornerRadius=side*.5;
-        badge.layer.borderWidth=1.5;
-        badge.layer.borderColor=[UIColor whiteColor].CGColor;
-        badge.clipsToBounds=YES;
-        badge.userInteractionEnabled=NO;
-        UIImageSymbolConfiguration *conf=[UIImageSymbolConfiguration configurationWithPointSize:side*.58 weight:UIImageSymbolWeightBold];
-        UIImage *img=[UIImage systemImageNamed:current?@"checkmark":@"exclamationmark" withConfiguration:conf];
-        UIImageView *mark=[[UIImageView alloc] initWithImage:img];
-        mark.tintColor=[UIColor whiteColor];
-        mark.contentMode=UIViewContentModeScaleAspectFit;
-        mark.frame=badge.bounds;
-        [badge addSubview:mark];
-        [box addSubview:badge];
+    if(current) {
+        CGFloat dotSize=MAX(8,MIN(10,size*.18));
+        UIView *dot=[[UIView alloc] initWithFrame:CGRectMake(size-dotSize-2,size-dotSize-2,dotSize,dotSize)];
+        dot.backgroundColor=[UIColor colorWithRed:52/255.0 green:199/255.0 blue:89/255.0 alpha:1.0];
+        dot.layer.cornerRadius=dotSize*.5;
+        dot.layer.borderWidth=1.0;
+        dot.layer.borderColor=[UIColor whiteColor].CGColor;
+        dot.clipsToBounds=YES;
+        dot.userInteractionEnabled=NO;
+        [box addSubview:dot];
+    } else if(blocked) {
+        CGFloat side=MAX(14,MIN(18,size*.34));
+        UIImageView *mark=[[UIImageView alloc] initWithImage:
+            [UIImage systemImageNamed:@"exclamationmark.circle.fill"]];
+        mark.frame=CGRectMake(size-side-1,size-side-1,side,side);
+        mark.backgroundColor=FMThemeColor(FMColorSurface);
+        mark.tintColor=FMThemeColor(FMColorSecondary);
+        mark.layer.cornerRadius=side*.5;mark.clipsToBounds=YES;
+        mark.userInteractionEnabled=NO;
+        [box addSubview:mark];
     }
     return box;
 }
