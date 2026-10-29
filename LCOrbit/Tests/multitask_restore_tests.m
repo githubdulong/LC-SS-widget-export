@@ -80,6 +80,9 @@ static BOOL UIInterfaceOrientationIsLandscape(NSInteger orientation) { return or
 @property(nonatomic,strong) NSArray *activatedVerticalConstraints;
 @property BOOL isMaximized;
 @property CGFloat scaleRatio;
+// 真实实现里这个属性声明在 DecoratedAppSceneViewController 的类扩展中，
+// 测试脚手架把方法直接拷进 OrbitWindow，所以这里也要声明一份。
+@property BOOL hostActive;
 @property CGRect originalFrame;
 - (void)updateOriginalFrame;
 - (void)updateWindowedFrameWithSettings:(OrbitSettings *)settings;
