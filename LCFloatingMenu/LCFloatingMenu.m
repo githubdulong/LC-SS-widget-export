@@ -23,16 +23,13 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.0.7"
+#define FM_MENU_VERSION @"1.0.8"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
-// 更新源指向个人 fork（@githubdulong），原作者为 dompling。
-// 修改原作者的更新源，避免误拉作者发布版覆盖本地改动。
-static NSString *const FMRepositoryURL=@"https://github.com/githubdulong/LC-SS-widget-export";
-static NSString *const FMUpdateAPI=@"https://api.github.com/repos/githubdulong/LC-SS-widget-export/releases/tags/fm-latest";
-// 当前版本行的后缀标识：说明本构建基于原作者版本修改而来。
-static NSString *const FMBuildAttribution=@"@githubdulong 改版（原作者 dompling）";
+// 更新源保持原作者仓库不变，避免自行修改后出现更新源与实际产物不一致的问题。
+static NSString *const FMRepositoryURL=@"https://github.com/dompling/LC-SS-widget-export";
+static NSString *const FMUpdateAPI=@"https://api.github.com/repos/dompling/LC-SS-widget-export/releases/tags/fm-latest";
 static NSString *FMCommitSummary(void) {
     NSString *hash=FM_BUILD_COMMIT;
     if(hash.length!=40) return @"未标记构建";
@@ -2620,7 +2617,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     aboutTitle.textColor=FMThemeColor(FMColorSecondary);
     aboutTitle.font=[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     [stack addArrangedSubview:aboutTitle];
-    NSString *version=[NSString stringWithFormat:@"v%@ · %@ · %@",FM_MENU_VERSION,FMCommitSummary(),FMBuildAttribution];
+    NSString *version=[NSString stringWithFormat:@"v%@ · %@",FM_MENU_VERSION,FMCommitSummary()];
     UIControl *versionRow=[self navigationRow:@"当前版本" subtitle:version
         symbol:@"number.circle" action:NULL];
     [versionRow.heightAnchor constraintEqualToConstant:65].active=YES;
