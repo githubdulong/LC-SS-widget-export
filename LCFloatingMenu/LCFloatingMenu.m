@@ -397,6 +397,10 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
 @property(nonatomic,assign) CGFloat orbY;
 @property(nonatomic,assign) BOOL left;
 @property(nonatomic,assign) BOOL isOpen;
+@property(nonatomic,strong) NSTimer *orbFadeTimer;
+@property(nonatomic,assign) BOOL orbFaded;
+@property(nonatomic,assign) CGFloat orbNormalAlpha;
+@property(nonatomic,strong) id screenTouchObserver;
 @property(nonatomic,copy) NSString *page;
 @property(nonatomic,strong) NSArray<NSDictionary*> *apps;
 + (instancetype)shared;
@@ -481,6 +485,12 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
     self.left=BoolPref(@"onLeft",NO);
     self.page=@"apps";
     self.apps=InstalledApps();
+    if(!self.screenTouchObserver) {
+        __weak typeof(self) weakSelf=self;
+        self.screenTouchObserver=[NSNotificationCenter.defaultCenter addObserverForName:@"LCOrbitScreenTouchedNotification" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification * _Nonnull note) {
+            [weakSelf wakeOrb];
+        }];
+    }
     FMLog(@"overlay-ready",[NSString stringWithFormat:@"available=%lu context=%@",
         (unsigned long)self.apps.count,FMHostUI()?@"lc-host":@"guest"]);
     [self draw];
@@ -629,7 +639,39 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
 static CGFloat FMPanelScaleMin(void) { return .50; }
 static CGFloat FMPanelScaleMax(void) { return 1.20; }
 
+- (void)scheduleOrbFade {
+    [self.orbFadeTimer invalidate];
+    if(self.isOpen || !self.orb) return;
+    __weak typeof(self) weakSelf=self;
+    self.orbFadeTimer=[NSTimer scheduledTimerWithTimeInterval:3.0 repeats:NO block:^(NSTimer * _Nonnull timer) {
+        [weakSelf fadeOrb];
+    }];
+}
+- (void)cancelOrbFade {
+    [self.orbFadeTimer invalidate];
+    self.orbFadeTimer=nil;
+}
+- (void)fadeOrb {
+    if(self.isOpen || !self.orb || self.orbFaded) return;
+    self.orbFaded=YES;
+    [UIView animateWithDuration:0.45 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionAllowUserInteraction animations:^{
+        self.orb.alpha=0.22;
+    } completion:nil];
+}
+- (void)wakeOrb {
+    if(!self.orb || self.isOpen) return;
+    [self cancelOrbFade];
+    if(self.orbFaded || self.orb.alpha < (self.orbNormalAlpha?:0.72) - 0.05) {
+        self.orbFaded=NO;
+        [UIView animateWithDuration:0.20 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionAllowUserInteraction animations:^{
+            self.orb.alpha=self.orbNormalAlpha?:0.72;
+        } completion:nil];
+    }
+    [self scheduleOrbFade];
+}
+
 - (void)drawOrb {
+    [self cancelOrbFade];
     [self.orb removeFromSuperview]; self.orb=nil;
     CGRect f=[self orbFrame];
     UIButton *button=[FMHitButton buttonWithType:UIButtonTypeCustom];
@@ -653,12 +695,15 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     CGFloat alpha=BoolPref([@"override." stringByAppendingString:GuestID()],NO)?
         FloatPref([@"appAlpha." stringByAppendingString:GuestID()],FloatPref(@"idleAlpha",.72)):
         FloatPref(@"idleAlpha",.72);
-    button.alpha=self.isOpen?0:Clamp(alpha,.16,1);
+    self.orbNormalAlpha=Clamp(alpha,.25,1);
+    self.orbFaded=NO;
+    button.alpha=self.isOpen?0:self.orbNormalAlpha;
     button.userInteractionEnabled=!self.isOpen;
     button.accessibilityElementsHidden=self.isOpen;
     button.accessibilityLabel=@"LC 悬浮菜单";
     button.accessibilityHint=@"轻触展开，拖动移动，长按进入菜单设置";
     button.accessibilityTraits=UIAccessibilityTraitButton;
+    [button addTarget:self action:@selector(wakeOrb) forControlEvents:UIControlEventTouchDown];
     if(BoolPref([@"override." stringByAppendingString:GuestID()],NO) &&
        BoolPref([@"doubleTap." stringByAppendingString:GuestID()],NO)) {
         UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggle)];
@@ -671,6 +716,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [button addGestureRecognizer:pan];
     [self.overlayView addSubview:button];
     self.orb=button;
+    if(!self.isOpen) [self scheduleOrbFade];
 }
 - (void)hold:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state!=UIGestureRecognizerStateBegan) return;
@@ -712,6 +758,9 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
 - (void)pan:(UIPanGestureRecognizer *)g {
     CGPoint p=[g locationInView:self.overlayView];
     if(g.state==UIGestureRecognizerStateBegan || g.state==UIGestureRecognizerStateChanged) {
+        [self cancelOrbFade];
+        self.orbFaded=NO;
+        self.orb.alpha=self.orbNormalAlpha?:0.72;
         CGFloat w=self.window.bounds.size.width,h=self.window.bounds.size.height;
         CGFloat orbW=self.orbWidth,orbH=self.orbHeight;
         UIEdgeInsets safe=self.window.safeAreaInsets;
@@ -719,7 +768,6 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         CGFloat minY=MAX(60,safe.top+6)+orbH/2;
         CGFloat maxY=MAX(minY,h-MAX(36,safe.bottom+8)-orbH/2);
         self.orb.center=CGPointMake(Clamp(p.x,minX,maxX),Clamp(p.y,minY,maxY));
-        if(g.state==UIGestureRecognizerStateChanged) self.orb.alpha=1;
     } else if(g.state==UIGestureRecognizerStateEnded) {
         self.left=self.orb.center.x < self.window.bounds.size.width*.5;
         self.orbY=Clamp(self.orb.center.y/self.window.bounds.size.height,.1,.9);
@@ -730,15 +778,24 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         } else [UIView animateWithDuration:.36 delay:0 usingSpringWithDamping:.74
              initialSpringVelocity:.35 options:UIViewAnimationOptionCurveEaseOut animations:^{
                 self.orb.frame=[self orbFrame];
-             } completion:^(BOOL done){[self draw];}];
+             } completion:^(BOOL done){
+                 [self draw];
+                 [self scheduleOrbFade];
+             }];
+        [self scheduleOrbFade];
     } else if(g.state==UIGestureRecognizerStateCancelled || g.state==UIGestureRecognizerStateFailed) {
         [self draw];
+        [self scheduleOrbFade];
     }
 }
 - (void)toggle {
     BOOL opening=!self.isOpen;
-    if(opening) [self loadAppsScroll];
-    else [self persistAppsScroll];
+    if(opening) {
+        [self cancelOrbFade];
+        [self loadAppsScroll];
+    } else {
+        [self persistAppsScroll];
+    }
     self.isOpen=opening; self.page=@"apps";
     if(self.isOpen) self.apps=InstalledApps();
     FMLog(self.isOpen?@"menu-open":@"menu-close",nil);
@@ -746,6 +803,11 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
                           payload:@{@"open":@(self.isOpen),@"guestID":GuestID()}];
     if(BoolPref(@"haptic",YES)) {
         [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    }
+    if(!opening) {
+        self.orbFaded=NO;
+        self.orb.alpha=self.orbNormalAlpha?:0.72;
+        [self scheduleOrbFade];
     }
     if(opening) {
         [self draw];
@@ -831,15 +893,22 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     BOOL current=[LCOrbitGuestService isCurrentGuest:app];
     BOOL blocked=![app[@"launchable"] boolValue] && ![app[@"builtin"] boolValue];
     if(current || blocked) {
-        CGFloat side=MAX(13,MIN(18,size*.36));
-        UIImageView *mark=[[UIImageView alloc] initWithImage:
-            [UIImage systemImageNamed:current?@"checkmark.circle.fill":@"exclamationmark.circle.fill"]];
-        mark.frame=CGRectMake(size-side-1,size-side-1,side,side);
-        mark.backgroundColor=FMThemeColor(FMColorSurface);
-        mark.tintColor=current?FMAccent():FMThemeColor(FMColorSecondary);
-        mark.layer.cornerRadius=side*.5;mark.clipsToBounds=YES;
-        mark.userInteractionEnabled=NO;
-        [box addSubview:mark];
+        CGFloat side=MAX(15,MIN(20,size*.38));
+        UIView *badge=[[UIView alloc] initWithFrame:CGRectMake(size-side-1.5,size-side-1.5,side,side)];
+        badge.backgroundColor=current?[UIColor systemGreenColor]:[UIColor systemOrangeColor];
+        badge.layer.cornerRadius=side*.5;
+        badge.layer.borderWidth=1.5;
+        badge.layer.borderColor=[UIColor whiteColor].CGColor;
+        badge.clipsToBounds=YES;
+        badge.userInteractionEnabled=NO;
+        UIImageSymbolConfiguration *conf=[UIImageSymbolConfiguration configurationWithPointSize:side*.58 weight:UIImageSymbolWeightBold];
+        UIImage *img=[UIImage systemImageNamed:current?@"checkmark":@"exclamationmark" withConfiguration:conf];
+        UIImageView *mark=[[UIImageView alloc] initWithImage:img];
+        mark.tintColor=[UIColor whiteColor];
+        mark.contentMode=UIViewContentModeScaleAspectFit;
+        mark.frame=badge.bounds;
+        [badge addSubview:mark];
+        [box addSubview:badge];
     }
     return box;
 }
