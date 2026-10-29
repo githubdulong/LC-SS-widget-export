@@ -23,7 +23,7 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.0.9"
+#define FM_MENU_VERSION @"1.1.0"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
@@ -890,6 +890,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     objc_setAssociatedObject(row,@selector(switchFromRow:),app,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [row addTarget:self action:@selector(switchFromRow:)
         forControlEvents:UIControlEventTouchUpInside];
+    [row addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+    [row addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
     if(!running) return row;
     // Sibling controls keep close taps independent of the row's switch action.
     UIView *container=[[UIView alloc] initWithFrame:row.frame];
@@ -907,6 +909,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     close.accessibilityLabel=[@"关闭 " stringByAppendingString:FMAppCaption(app)];
     objc_setAssociatedObject(close,@selector(closeTaskFromButton:),app,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [close addTarget:self action:@selector(closeTaskFromButton:) forControlEvents:UIControlEventTouchUpInside];
+    [close addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+    [close addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
     [container addSubview:close];
     return container;
 }
@@ -1093,17 +1097,32 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     // entries; controls and the guest service independently guard execution.
     NSMutableArray *found=[self.apps mutableCopy] ?: [NSMutableArray array];
     NSArray *order=[HostDefaults() arrayForKey:Pref(@"menuOrder")];
-    if([order isKindOfClass:NSArray.class] && order.count) {
-        [found sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b){
+    id multitask=(id)NSClassFromString(@"LCOrbitMultitask");
+    SEL runSel=NSSelectorFromString(@"isRunningGuest:");
+    BOOL canRun=multitask && [multitask respondsToSelector:runSel];
+    BOOL (*isRunning)(id,SEL,id)=canRun?(BOOL(*)(id,SEL,id))[multitask methodForSelector:runSel]:NULL;
+    [found sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b){
+        BOOL runA=isRunning?isRunning(multitask,runSel,a):NO;
+        BOOL runB=isRunning?isRunning(multitask,runSel,b):NO;
+        if(runA!=runB) {
+            return runA?NSOrderedAscending:NSOrderedDescending;
+        }
+        if(runA && runB) {
+            BOOL curA=[LCOrbitGuestService isCurrentGuest:a];
+            BOOL curB=[LCOrbitGuestService isCurrentGuest:b];
+            if(curA!=curB) {
+                return curA?NSOrderedAscending:NSOrderedDescending;
+            }
+        }
+        if([order isKindOfClass:NSArray.class] && order.count) {
             NSUInteger ai=[order indexOfObject:a[@"identity"] ?: a[@"path"]];
             NSUInteger bi=[order indexOfObject:b[@"identity"] ?: b[@"path"]];
-            // Read pre-fix preferences without merging new private/shared keys.
             if(ai==NSNotFound) ai=[order indexOfObject:a[@"path"]];
             if(bi==NSNotFound) bi=[order indexOfObject:b[@"path"]];
             if(ai!=bi) return ai<bi?NSOrderedAscending:NSOrderedDescending;
-            return [a[@"title"] localizedStandardCompare:b[@"title"]];
-        }];
-    }
+        }
+        return [a[@"title"] localizedStandardCompare:b[@"title"]];
+    }];
     return found;
 }
 - (NSArray<NSString*> *)favorites {
@@ -1159,6 +1178,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
                                      app,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [row addTarget:self action:@selector(switchFromRow:)
                 forControlEvents:UIControlEventTouchUpInside];
+            [row addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+            [row addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
             if([LCOrbitMultitask isRunningGuest:app]) {
                 CGFloat closeSize=MIN(32,24/MAX(.70,self.panelContentScale?:1));
                 UIView *container=[[UIView alloc] initWithFrame:CGRectMake(0,0,70,63)];
@@ -1182,6 +1203,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
                 close.accessibilityLabel=[@"关闭 " stringByAppendingString:FMAppCaption(app)];
                 objc_setAssociatedObject(close,@selector(closeTaskFromButton:),app,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 [close addTarget:self action:@selector(closeTaskFromButton:) forControlEvents:UIControlEventTouchUpInside];
+                [close addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+                [close addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
                 [container addSubview:close];
                 [NSLayoutConstraint activateConstraints:@[
                     [close.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-2],
@@ -1245,6 +1268,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         }
         objc_setAssociatedObject(tile,@selector(switchFromRow:),app,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [tile addTarget:self action:@selector(switchFromRow:) forControlEvents:UIControlEventTouchUpInside];
+        [tile addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+        [tile addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
         tile.accessibilityLabel=FMAppCaption(app);
         tile.accessibilityTraits=UIAccessibilityTraitButton;
         tile.enabled=![LCOrbitGuestService isCurrentGuest:app];
@@ -1330,6 +1355,8 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         [tile addSubview:glyph];
         [button addTarget:self action:NSSelectorFromString(spec[1])
                     forControlEvents:UIControlEventTouchUpInside];
+        [button addTarget:self action:@selector(rowTouchDown:) forControlEvents:UIControlEventTouchDown|UIControlEventTouchDragEnter];
+        [button addTarget:self action:@selector(rowTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
         [footer addSubview:button];
     }
 }
@@ -2359,6 +2386,23 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
             return;
         }
     }
+}
+- (void)rowTouchDown:(UIControl *)sender {
+    [UIView animateWithDuration:0.10 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionAllowUserInteraction animations:^{
+        sender.transform=CGAffineTransformMakeScale(0.92, 0.92);
+        sender.alpha=0.75;
+    } completion:nil];
+    if(BoolPref(@"haptic",YES)) {
+        UIImpactFeedbackGenerator *gen=[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [gen prepare];
+        [gen impactOccurred];
+    }
+}
+- (void)rowTouchUp:(UIControl *)sender {
+    [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.62 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut|UIViewAnimationOptionAllowUserInteraction animations:^{
+        sender.transform=CGAffineTransformIdentity;
+        sender.alpha=1.0;
+    } completion:nil];
 }
 - (void)switchFromRow:(UIControl *)sender {
     NSDictionary *app=objc_getAssociatedObject(sender,@selector(switchFromRow:));
