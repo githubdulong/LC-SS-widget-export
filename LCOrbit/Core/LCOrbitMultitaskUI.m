@@ -58,6 +58,7 @@ BOOL OrbitMethodMatches(Class cls, NSString *name, const char *result, NSArray<N
 - (void)setPeripheryInsets:(UIEdgeInsets)insets;
 - (void)setSafeAreaInsetsPortrait:(UIEdgeInsets)insets;
 - (void)setSafeAreaEdgeInsets:(UIEdgeInsets)insets;
+- (void)setBackgroundNotificationEnabled:(BOOL)enabled;
 @end
 
 static char SnapshotKey, ConstraintsKey, HostingPlacementKey;
@@ -76,6 +77,51 @@ static IMP OriginalInitialSettings;
 static UIViewController *InitialSceneWindow;
 static void InstallFinalSceneHook(void);
 typedef id (*OrbitInitializer)(id __attribute__((ns_consumed)),SEL,id,id,id,id) __attribute__((ns_returns_retained));
+
+static UIBackgroundTaskIdentifier HostBgTaskId = UIBackgroundTaskInvalid;
+static void HostAudioKeepAliveInit(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        Class audioSessionClass = NSClassFromString(@"AVAudioSession");
+        if(audioSessionClass) {
+            SEL sharedSel = NSSelectorFromString(@"sharedInstance");
+            if([audioSessionClass respondsToSelector:sharedSel]) {
+                id session = ((id(*)(id,SEL))objc_msgSend)(audioSessionClass, sharedSel);
+                SEL setCatSel = NSSelectorFromString(@"setCategory:withOptions:error:");
+                if([session respondsToSelector:setCatSel]) {
+                    NSString *playbackCat = @"AVAudioSessionCategoryPlayback";
+                    NSError *err = nil;
+                    ((BOOL(*)(id,SEL,id,NSUInteger,NSError**))objc_msgSend)(session, setCatSel, playbackCat, 1, &err);
+                    SEL setActiveSel = NSSelectorFromString(@"setActive:error:");
+                    if([session respondsToSelector:setActiveSel]) {
+                        ((BOOL(*)(id,SEL,BOOL,NSError**))objc_msgSend)(session, setActiveSel, YES, &err);
+                    }
+                }
+            }
+        }
+        
+        NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+        [nc addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification * _Nonnull note) {
+            UIApplication *app = [UIApplication sharedApplication];
+            if(HostBgTaskId != UIBackgroundTaskInvalid) {
+                [app endBackgroundTask:HostBgTaskId];
+                HostBgTaskId = UIBackgroundTaskInvalid;
+            }
+            HostBgTaskId = [app beginBackgroundTaskWithName:@"LCOrbitHostAudioKeepAlive" expirationHandler:^{
+                [app endBackgroundTask:HostBgTaskId];
+                HostBgTaskId = UIBackgroundTaskInvalid;
+            }];
+        }];
+        [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification * _Nonnull note) {
+            if(HostBgTaskId != UIBackgroundTaskInvalid) {
+                [[UIApplication sharedApplication] endBackgroundTask:HostBgTaskId];
+                HostBgTaskId = UIBackgroundTaskInvalid;
+            }
+        }];
+    });
+}
+
+
 
 static Class HostClass(NSString *name) {
     return NSClassFromString(name) ?: NSClassFromString([@"LiveContainerSwiftUI." stringByAppendingString:name]);
@@ -314,6 +360,10 @@ static void PresenterReady(id scene,SEL selector) {
         [window.view layoutIfNeeded];
         UpdateScene(window,nil);
     }
+    id sc=SceneController(window);
+    if([sc respondsToSelector:@selector(setBackgroundNotificationEnabled:)]) {
+        [sc setBackgroundNotificationEnabled:NO];
+    }
 }
 
 static void RestoreAppearance(UIViewController *window) {
@@ -366,6 +416,10 @@ static void Activate(UIViewController *window,SEL selector) {
     [window.view.superview bringSubviewToFront:window.view];
     [LCOrbitMultitask didActivateWindow:window];
     if(Fullscreen()) UpdateScene(window,nil);
+    id sc=SceneController(window);
+    if([sc respondsToSelector:@selector(setBackgroundNotificationEnabled:)]) {
+        [sc setBackgroundNotificationEnabled:NO];
+    }
 }
 static id InitWindow(id __attribute__((ns_consumed)) self,SEL selector,NSString *name,NSString *bundle,NSString *container,UIViewController *root) __attribute__((ns_returns_retained));
 static id InitWindow(id __attribute__((ns_consumed)) self,SEL selector,NSString *name,NSString *bundle,NSString *container,UIViewController *root) {
@@ -631,6 +685,7 @@ static void FindWindows(UIViewController *controller,NSMutableSet *found) {
     Replace(sceneClass,@"updateSettingsWithBlock:",(IMP)SceneSettings,&OriginalSceneSettings);
     Replace(parametersClass,@"updateSettingsWithBlock:",(IMP)InitialSceneSettings,&OriginalInitialSettings);
     Replace(sceneClass,@"setUpAppPresenter",(IMP)PresenterReady,&OriginalPresenter);
+    HostAudioKeepAliveInit();
     installed=YES;
     return YES;
 }

@@ -96,6 +96,7 @@ static OrbitApplication *UIApp = nil;
 @property(nonatomic,copy) NSString *dataUUID;
 @property BOOL usesHostingControllerAPI,isNativeWindow,throwDuringSetup;
 - (void)nativePresenterSetup;
+- (void)setBackgroundNotificationEnabled:(BOOL)enabled;
 - (void)configureParameters:(void (^)(FBSMutableSceneParameters *))block;
 - (id)ui_viewServiceComponent;
 - (void)hook__performUpdateWithoutActivation:(void (^)(id,id))block;
@@ -146,6 +147,7 @@ static UIEdgeInsets LCUIEdgeInsetsRotateToOrientation(UIEdgeInsets insets,NSInte
 - (void)updateClientSettingsWithBlock:(void (^)(id))block { if(block) block([OrbitSettings new]); }
 @end
 @implementation OrbitController
+- (void)setBackgroundNotificationEnabled:(BOOL)enabled {}
 - (void)nativePresenterSetup {
     if(self.throwDuringSetup) [NSException raise:@"SetupFixture" format:@"original setup failed"];
 #include "initial-settings.inc"

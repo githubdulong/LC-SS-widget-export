@@ -23,11 +23,11 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.0.8"
+#define FM_MENU_VERSION @"1.0.9"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
-// 更新源保持原作者仓库不变，避免自行修改后出现更新源与实际产物不一致的问题。
+// 保持原作者仓库信息不变
 static NSString *const FMRepositoryURL=@"https://github.com/dompling/LC-SS-widget-export";
 static NSString *const FMUpdateAPI=@"https://api.github.com/repos/dompling/LC-SS-widget-export/releases/tags/fm-latest";
 static NSString *FMCommitSummary(void) {
@@ -2628,7 +2628,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [checkRow.heightAnchor constraintEqualToConstant:65].active=YES;
     [stack addArrangedSubview:checkRow];
     UIControl *repository=[self navigationRow:@"GitHub 仓库"
-        subtitle:@"github.com/githubdulong/LC-SS-widget-export"
+        subtitle:@"github.com/dompling/LC-SS-widget-export"
         symbol:@"link" action:@selector(openRepository)];
     [repository.heightAnchor constraintEqualToConstant:65].active=YES;
     [stack addArrangedSubview:repository];
