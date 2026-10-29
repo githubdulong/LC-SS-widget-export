@@ -641,6 +641,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
 
 - (void)scheduleOrbFade {
     [self.orbFadeTimer invalidate];
+    if(!BoolPref(@"autoFade",YES)) return;
     if(self.isOpen || !self.orb) return;
     __weak typeof(self) weakSelf=self;
     self.orbFadeTimer=[NSTimer scheduledTimerWithTimeInterval:5.0 repeats:NO block:^(NSTimer * _Nonnull timer) {
@@ -667,7 +668,9 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
             self.orb.alpha=self.orbNormalAlpha?:0.72;
         } completion:nil];
     }
-    [self scheduleOrbFade];
+    if(BoolPref(@"autoFade",YES)) {
+        [self scheduleOrbFade];
+    }
 }
 
 - (void)drawOrb {
@@ -716,7 +719,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [button addGestureRecognizer:pan];
     [self.overlayView addSubview:button];
     self.orb=button;
-    if(!self.isOpen) [self scheduleOrbFade];
+    if(!self.isOpen && BoolPref(@"autoFade",YES)) [self scheduleOrbFade];
 }
 - (void)hold:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state!=UIGestureRecognizerStateBegan) return;
@@ -1587,6 +1590,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         }
         [self section:@"悬浮控件" sub:nil in:s];
         [self settingSwitch:s title:@"触觉反馈" key:@"haptic" defaultValue:YES tag:1];
+        [self settingSwitch:s title:@"自动淡化" key:@"autoFade" defaultValue:YES tag:20];
         [self spacer:s size:14];
         [self section:@"应用切换" sub:nil in:s];
         [self settingSwitch:s title:@"切换前二次确认" key:@"confirm" defaultValue:YES tag:2];
@@ -1814,6 +1818,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [self spacer:s size:8];
     [self section:@"基础交互" sub:nil in:s];
     [self settingSwitch:s title:@"触觉反馈" key:@"haptic" defaultValue:YES tag:1];
+    [self settingSwitch:s title:@"自动淡化" key:@"autoFade" defaultValue:YES tag:20];
     [self settingSwitch:s title:@"切换前二次确认" key:@"confirm" defaultValue:YES tag:2];
     [self spacer:s size:10];
     [self diyPage:s];
@@ -2156,6 +2161,17 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         case 8:key=[@"doubleTap." stringByAppendingString:GuestID()];break;
         case 16:key=@"compactMode";break;
         case 18:key=@"clearGlass";break;
+        case 20: {
+            key=@"autoFade";
+            if(!sw.isOn) {
+                [self cancelOrbFade];
+                self.orbFaded=NO;
+                self.orb.alpha=self.orbNormalAlpha?:0.72;
+            } else {
+                [self scheduleOrbFade];
+            }
+            break;
+        }
         case 4:key=AppPref();break;
         default:return;
     }
