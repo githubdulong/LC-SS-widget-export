@@ -115,6 +115,8 @@ class AppInfoProvider {
     @objc let appUUID: String
     let appInfo: LCAppInfo?
     let view: UIView?
+    // 最近使用时间戳：用于 Dock 按「最近使用优先」排序，切换窗口时刷新。
+    var lastActiveAt: TimeInterval = Date().timeIntervalSince1970
     
     @objc init(appName: String, appUUID: String, appInfo: LCAppInfo? = nil, view: UIView?) {
         self.appName = appName
@@ -597,11 +599,36 @@ class AppInfoProvider {
             if let targetView = findMultitaskView(in: window, withUUID: uuid) {
                 passURLSchemeToView(targetView)
                 animateViewAppearance(targetView, from: center, in: window)
+                // 切换到的 App 视为最近使用，刷新时间戳后重新排序 Dock。
+                markAppActive(uuid: uuid)
                 return true
             }
         }
         
         return false
+    }
+    
+    /// 更新指定 App 的最近使用时间，并让 Dock 按最近使用优先重排。
+    func markAppActive(uuid: String) {
+        DispatchQueue.main.async {
+            guard let index = self.apps.firstIndex(where: { $0.appUUID == uuid }) else { return }
+            self.apps[index].lastActiveAt = Date().timeIntervalSince1970
+            self.sortAppsByRecentUse()
+            if self.isVisible {
+                self.updateDockFrame()
+            }
+        }
+    }
+    
+    /// 按最近使用时间倒序排列：最近切换过的 App 排在前面。
+    private func sortAppsByRecentUse() {
+        let sorted = self.apps.sorted {
+            if $0.lastActiveAt == $1.lastActiveAt { return $0.appName < $1.appName }
+            return $0.lastActiveAt > $1.lastActiveAt
+        }
+        if sorted.map({ $0.appUUID }) != self.apps.map({ $0.appUUID }) {
+            self.apps = sorted
+        }
     }
 
     private func passURLSchemeToView(_ view: UIView) {
@@ -707,6 +734,8 @@ class AppInfoProvider {
         
         DispatchQueue.main.async {
             self.apps.append(appModel)
+            // 新启动的 App 自带当前时间戳，直接按最近使用重排。
+            self.sortAppsByRecentUse()
             
             if self.apps.count == 1 {
                 self.showDock()

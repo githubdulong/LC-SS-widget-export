@@ -61,12 +61,16 @@ static PiPManager* sharedInstance = nil;
         self.displayingVC = vc;
         self.pipVideoCallViewController = [AVPictureInPictureVideoCallViewController new];
         self.pipVideoCallViewController.preferredContentSize = vc.view.bounds.size;
+        // 画面的挂载必须早于 startPictureInPicture，否则 PiP 窗口会起来但内容层为空，
+        // 表现就是「只有声音没有画面」。这里在创建 contentSource 前就把内容视图准备好。
         if(vc.usesHostingControllerAPI) {
-            self.pipVideoCallContentView = [[UIView alloc] initWithFrame:self.pipVideoCallViewController.view.bounds];
-            //self.pipVideoCallContentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            self.pipVideoCallContentView = [[UIView alloc] initWithFrame:vc.view.bounds];
             self.pipVideoCallContentView.layer.anchorPoint = CGPointMake(0, 0);
             self.pipVideoCallContentView.layer.position = CGPointMake(0, 0);
+            self.pipVideoCallContentView.clipsToBounds = YES;
             [self.pipVideoCallViewController.view addSubview:self.pipVideoCallContentView];
+            vc.contentView.frame = self.pipVideoCallContentView.bounds;
+            [self.pipVideoCallContentView addSubview:vc.contentView];
         } else {
             self.pipVideoCallContentView = vc.contentView;
         }
@@ -90,18 +94,32 @@ static PiPManager* sharedInstance = nil;
 - (void)pictureInPictureControllerWillStartPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
     [self.displayingDecoratedVC minimizeWindowPiP];
     if(self.displayingVC.usesHostingControllerAPI) {
-        self.pipVideoCallContentView.frame = CGRectMake(0, 0, self.displayingVC.view.bounds.size.width, self.displayingVC.view.bounds.size.height);
+        // 尺寸可能因为方向或 PiP 容器变化而不同步，这里强制重算一次，
+        // 避免 contentView 仍按 0 尺寸或旧尺寸布局。
+        CGRect target = self.pipVideoCallViewController.view.bounds;
+        if(target.size.width <= 0 || target.size.height <= 0) {
+            target = self.displayingVC.view.bounds;
+        }
+        self.pipVideoCallContentView.frame = target;
         self.pipVideoCallViewController.additionalSafeAreaInsets = self.displayingVC.view.safeAreaInsets;
-        [self.pipVideoCallContentView addSubview:self.displayingVC.contentView];
+        if(self.displayingVC.contentView.superview != self.pipVideoCallContentView) {
+            [self.pipVideoCallContentView addSubview:self.displayingVC.contentView];
+        }
+        self.displayingVC.contentView.frame = self.pipVideoCallContentView.bounds;
     } else {
         self.displayingVC.contentView.frame = CGRectMake(0, 0, self.displayingVC.view.bounds.size.width, self.displayingVC.view.bounds.size.height);
     }
-    [self.pipVideoCallViewController.view addSubview:self.pipVideoCallContentView];
+    if(self.pipVideoCallContentView.superview != self.pipVideoCallViewController.view) {
+        [self.pipVideoCallViewController.view addSubview:self.pipVideoCallContentView];
+    }
+    [self.pipVideoCallViewController.view.layer removeObserver:self forKeyPath:@"bounds"];
     [self.pipVideoCallViewController.view.layer addObserver:self
                                 forKeyPath:@"bounds"
                                    options:NSKeyValueObservingOptionNew
                                    context:NULL];
-    self.pipVideoCallViewController.preferredContentSize = self.displayingVC.view.bounds.size;
+    if(self.displayingVC.view.bounds.size.width > 0 && self.displayingVC.view.bounds.size.height > 0) {
+        self.pipVideoCallViewController.preferredContentSize = self.displayingVC.view.bounds.size;
+    }
     [self.displayingVC setBackgroundNotificationEnabled:false];
     self.displayingVC.shouldIgnoreSceneUpdates = YES;
 }
@@ -118,6 +136,11 @@ static PiPManager* sharedInstance = nil;
 }
 
 - (void)pictureInPictureControllerDidStopPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
+    @try {
+        [self.pipVideoCallViewController.view.layer removeObserver:self forKeyPath:@"bounds"];
+    } @catch (__unused NSException *exception) {
+        // 观察者可能已被移除，忽略即可。
+    }
     [self.displayingVC.view insertSubview:self.displayingVC.contentView atIndex:0];
     [self.displayingVC setBackgroundNotificationEnabled:true];
     // resize if needed (eg orientation differs)
@@ -137,9 +160,15 @@ static PiPManager* sharedInstance = nil;
 
 - (void)observeValueForKeyPath:(NSString*)keyPath ofObject:(NSObject*)object change:(NSDictionary<NSString *,id> *) change context:(void *) context {
     CGRect rect = [change[@"new"] CGRectValue];
+    CGFloat sourceW = self.displayingVC.contentView.bounds.size.width;
+    CGFloat sourceH = self.displayingVC.contentView.bounds.size.height;
+    // 源尺寸为 0 时直接返回，否则会算出 inf/NaN 的 transform，把内容层推出可视区域。
+    if(sourceW <= 0 || sourceH <= 0 || rect.size.width <= 0 || rect.size.height <= 0) return;
     CGFloat scale = self.displayingVC.usesHostingControllerAPI ? self.displayingVC.scaleRatio : 1;
-    CGAffineTransform transform1 = CGAffineTransformScale(CGAffineTransformIdentity, rect.size.width / self.displayingVC.contentView.bounds.size.width/scale,rect.size.height /self.displayingVC.contentView.bounds.size.height/scale);
+    if(scale <= 0) scale = 1;
+    CGAffineTransform transform1 = CGAffineTransformScale(CGAffineTransformIdentity, rect.size.width / sourceW / scale, rect.size.height / sourceH / scale);
     self.pipVideoCallContentView.transform = transform1;
+    self.pipVideoCallViewController.preferredContentSize = rect.size;
 }
 
 @end

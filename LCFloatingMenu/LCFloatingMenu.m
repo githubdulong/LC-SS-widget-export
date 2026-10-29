@@ -23,7 +23,7 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.0.3"
+#define FM_MENU_VERSION @"1.0.4"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
@@ -334,8 +334,12 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
 
 @interface FMHitButton : UIButton @end
 @implementation FMHitButton
+// 微珠视觉宽度只有 16pt，固定外扩 14pt 后仍不足 44pt 的最小可点目标。
+// 这里按“命中区至少 44x44pt”反推外扩量，再额外放 6pt 容错，解决贴边时难点中的问题。
 - (BOOL)pointInside:(CGPoint)p withEvent:(UIEvent *)event {
-    return CGRectContainsPoint(CGRectInset(self.bounds,-14,-10),p);
+    CGFloat dx=MAX(0,(44-self.bounds.size.width)/2)+6;
+    CGFloat dy=MAX(0,(44-self.bounds.size.height)/2)+6;
+    return CGRectContainsPoint(CGRectInset(self.bounds,-dx,-dy),p);
 }
 @end
 
@@ -620,6 +624,10 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
     [self.panel removeFromSuperview]; self.panel=nil;
     [self.dismissLayer removeFromSuperview]; self.dismissLayer=nil;
 }
+// 面板缩放允许范围：下限 .50 以支持更小的弹出菜单，上限保持 1.20。
+static CGFloat FMPanelScaleMin(void) { return .50; }
+static CGFloat FMPanelScaleMax(void) { return 1.20; }
+
 - (void)drawOrb {
     [self.orb removeFromSuperview]; self.orb=nil;
     CGRect f=[self orbFrame];
@@ -939,9 +947,9 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
     NSUInteger appCount=[self visibleApps].count;
     // Compact drawer has exactly one footer control: LC home.
     NSUInteger compactActions=1;
-    CGFloat actualScale=small?MIN(Clamp(FloatPref(@"panelScale",1.0),.75,1.20),
+    CGFloat actualScale=small?MIN(Clamp(FloatPref(@"panelScale",1.0),FMPanelScaleMin(),FMPanelScaleMax()),
                                    (usableWidth-20)/pw):1;
-    if(!isfinite(actualScale) || actualScale<.70) return;
+    if(!isfinite(actualScale) || actualScale<.50) return;
     CGFloat footerHeight=0,top=0,bottom=0;
     BOOL fits=NO;
     // Fit complete controls before choosing panel height. A short scene trades
@@ -950,14 +958,19 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
         self.panelContentScale=actualScale;
         BOOL tight=available/actualScale<360;
         self.panelShowsHeader=small && !compact && !tight;
-        footerHeight=compact?(tight?MAX(50,44/actualScale)+4:10+compactActions*63+3):
-                              (tight?MAX(60,44/actualScale)+8:74);
+        // 小缩放时 44/actualScale 会把页脚和行高反向放大，导致面板比原来更挤。
+        // 这里对补偿值设上限：不低于基准尺寸，也不超过基准的 1.6 倍，兼顾可点性与版面密度。
+        CGFloat footerBase=compact?(tight?50:10+compactActions*63+3):(tight?60:74);
+        CGFloat footerHit=44/actualScale;
+        footerHeight=MIN(MAX(footerBase,footerHit),footerBase*1.6);
         top=compact?shoulder+8:(self.panelShowsHeader?86+shoulder:shoulder+6);
         bottom=footerHeight+6+shoulder;
         CGFloat rowHeight=compact?63:[self appRowHeight];
-        if(!small || (top+bottom+rowHeight)*actualScale<=available) { fits=YES;break; }
-        if(actualScale<=.70) break;
-        actualScale=MAX(.70,actualScale*.95);
+        // 行高同样需要防反向放大：面板越小，单行不该被撑得越大。
+        CGFloat scaledRowHeight=MIN(rowHeight,MAX(rowHeight,44/actualScale));
+        if(!small || (top+bottom+scaledRowHeight)*actualScale<=available) { fits=YES;break; }
+        if(actualScale<=.50) break;
+        actualScale=MAX(.50,actualScale*.95);
     }
     if(!fits) return;
     self.panelFooterHeight=footerHeight;
@@ -1668,7 +1681,7 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
     heading.distribution=UIStackViewDistributionFill;
     UILabel *name=[self label:@"弹出菜单缩放" size:14 weight:UIFontWeightMedium];
     UILabel *percent=[self label:
-        [NSString stringWithFormat:@"%.0f%%",100*Clamp(FloatPref(@"panelScale",1.0),.75,1.20)]
+        [NSString stringWithFormat:@"%.0f%%",100*Clamp(FloatPref(@"panelScale",1.0),FMPanelScaleMin(),FMPanelScaleMax())]
         size:13 weight:UIFontWeightSemibold];
     percent.textColor=FMThemeColor(FMColorSecondary);
     percent.textAlignment=NSTextAlignmentRight;
@@ -1677,8 +1690,8 @@ static UIImage *FMGuestIcon(NSDictionary *app) {
     [percent.widthAnchor constraintEqualToConstant:65].active=YES;
     [self addRow:heading height:29 to:stack];
     UISlider *slider=[UISlider new];
-    slider.minimumValue=.75;slider.maximumValue=1.20;
-    slider.value=Clamp(FloatPref(@"panelScale",1.0),.75,1.20);
+    slider.minimumValue=FMPanelScaleMin();slider.maximumValue=FMPanelScaleMax();
+    slider.value=Clamp(FloatPref(@"panelScale",1.0),FMPanelScaleMin(),FMPanelScaleMax());
     slider.tag=14;slider.tintColor=FMAccent();
     slider.accessibilityLabel=@"弹出菜单缩放";
     objc_setAssociatedObject(slider,@selector(sliderChanged:),percent,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
