@@ -23,12 +23,16 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.0.4"
+#define FM_MENU_VERSION @"1.0.5"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
-static NSString *const FMRepositoryURL=@"https://github.com/dompling/LC-SS-widget-export";
-static NSString *const FMUpdateAPI=@"https://api.github.com/repos/dompling/LC-SS-widget-export/releases/tags/fm-latest";
+// 更新源指向个人 fork（@githubdulong），原作者为 dompling。
+// 修改原作者的更新源，避免误拉作者发布版覆盖本地改动。
+static NSString *const FMRepositoryURL=@"https://github.com/githubdulong/LC-SS-widget-export";
+static NSString *const FMUpdateAPI=@"https://api.github.com/repos/githubdulong/LC-SS-widget-export/releases/tags/fm-latest";
+// 当前版本行的后缀标识：说明本构建基于原作者版本修改而来。
+static NSString *const FMBuildAttribution=@"@githubdulong 改版（原作者 dompling）";
 static NSString *FMCommitSummary(void) {
     NSString *hash=FM_BUILD_COMMIT;
     if(hash.length!=40) return @"未标记构建";
@@ -2616,7 +2620,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     aboutTitle.textColor=FMThemeColor(FMColorSecondary);
     aboutTitle.font=[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     [stack addArrangedSubview:aboutTitle];
-    NSString *version=[NSString stringWithFormat:@"v%@ · %@",FM_MENU_VERSION,FMCommitSummary()];
+    NSString *version=[NSString stringWithFormat:@"v%@ · %@ · %@",FM_MENU_VERSION,FMCommitSummary(),FMBuildAttribution];
     UIControl *versionRow=[self navigationRow:@"当前版本" subtitle:version
         symbol:@"number.circle" action:NULL];
     [versionRow.heightAnchor constraintEqualToConstant:65].active=YES;
@@ -2627,7 +2631,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     [checkRow.heightAnchor constraintEqualToConstant:65].active=YES;
     [stack addArrangedSubview:checkRow];
     UIControl *repository=[self navigationRow:@"GitHub 仓库"
-        subtitle:@"github.com/dompling/LC-SS-widget-export"
+        subtitle:@"github.com/githubdulong/LC-SS-widget-export"
         symbol:@"link" action:@selector(openRepository)];
     [repository.heightAnchor constraintEqualToConstant:65].active=YES;
     [stack addArrangedSubview:repository];
