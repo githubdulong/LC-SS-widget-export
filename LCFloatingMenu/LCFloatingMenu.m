@@ -23,7 +23,7 @@
 
 // Semantic version is maintained here; the exact source commit is embedded
 // automatically by LCOrbit/Build/build.sh for reliable update comparison.
-#define FM_MENU_VERSION @"1.1.0"
+#define FM_MENU_VERSION @"1.1.1"
 #ifndef FM_BUILD_COMMIT
 #define FM_BUILD_COMMIT @"unknown"
 #endif
@@ -277,6 +277,25 @@ static UIView *FMGlassContent(UIView *surface) {
         if([child isKindOfClass:UIVisualEffectView.class])
             return ((UIVisualEffectView *)child).contentView;
     return surface;
+}
+// The menu's own mark: the violet disc with a white bolt that LiveContainer
+// already uses to flag JIT. Drawn at the requested diameter so the drawer can
+// match the small lock/hide badges instead of inventing a new visual weight.
+static UIImage *FMLogoBadgeImage(CGFloat diameter) {
+    if(diameter<=0) return nil;
+    UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(diameter,diameter)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextRef c=context.CGContext;
+        CGContextSetFillColorWithColor(c,[UIColor colorWithRed:130/255.0 green:82/255.0 blue:190/255.0 alpha:1.0].CGColor);
+        CGContextFillEllipseInRect(c,CGRectMake(0,0,diameter,diameter));
+        UIImageSymbolConfiguration *conf=[UIImageSymbolConfiguration
+            configurationWithPointSize:round(diameter*.5) weight:UIImageSymbolWeightBold];
+        UIImage *bolt=[UIImage systemImageNamed:@"bolt.fill" withConfiguration:conf];
+        bolt=[bolt imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if(!bolt) return;
+        CGSize size=bolt.size;
+        [bolt drawInRect:CGRectMake((diameter-size.width)*.5,(diameter-size.height)*.5,size.width,size.height)];
+    }];
 }
 static UIImage *FMGuestIcon(NSDictionary *app) {
     NSString *folder=app[@"folder"];
@@ -1359,7 +1378,7 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     if(compact) {
         // Compact mode exposes only the return-home control in its footer.
         // Per-running-app close badges in the icon list are unaffected.
-        [items addObject:@[@"house.fill",NSStringFromSelector(@selector(compactReturnHome)),@"返回首页"]];
+        [items addObject:@[@"fm.logo",NSStringFromSelector(@selector(compactReturnHome)),@"返回首页"]];
     } else {
         if([LCOrbitMultitask isEnabled]) {
             [items addObject:@[@"house.fill",NSStringFromSelector(@selector(goHome)),@"返回 LC，保留运行任务"]];
@@ -1420,8 +1439,9 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
         [button addSubview:tile];
         UIImageSymbolConfiguration *conf=[UIImageSymbolConfiguration
            configurationWithPointSize:compact?23:20 weight:UIImageSymbolWeightSemibold];
-        UIImageView *glyph=[[UIImageView alloc] initWithImage:
-                                     [UIImage systemImageNamed:spec[0] withConfiguration:conf]];
+        UIImage *glyphImage=[spec[0] isEqualToString:@"fm.logo"]?FMLogoBadgeImage(26):
+            [UIImage systemImageNamed:spec[0] withConfiguration:conf];
+        UIImageView *glyph=[[UIImageView alloc] initWithImage:glyphImage];
         glyph.frame=CGRectInset(tile.bounds,12,12);
         glyph.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
         glyph.contentMode=UIViewContentModeScaleAspectFit;
@@ -2496,7 +2516,12 @@ static CGFloat FMPanelScaleMax(void) { return 1.20; }
     NSDictionary *app=objc_getAssociatedObject(sender,@selector(switchFromRow:));
     if(!app || [LCOrbitGuestService isCurrentGuest:app]) return;
     if(![app[@"builtin"] boolValue] && ![app[@"launchable"] boolValue]) {
-        [self showMessage:@"暂不可切换" details:app[@"status"] ?: @"请从 LC 启动。"];
+        NSString *detail=app[@"status"] ?: @"请从 LC 启动。";
+        // A JIT block is not a defect: JIT is already on, the menu just needs to
+        // take over the launch. Say that instead of a bare "需要 JIT".
+        if([detail isEqualToString:@"需要 JIT"])
+            detail=@"已启用 JIT 模式，请在 LCFloatingMenu 启用";
+        [self showMessage:@"暂不可切换" details:detail];
         return;
     }
     if([app[@"builtin"] boolValue]) {
